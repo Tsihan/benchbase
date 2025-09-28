@@ -28,7 +28,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.*;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -87,6 +90,97 @@ public abstract class BenchmarkModule {
       return DriverManager.getConnection(
           workConf.getUrl(), workConf.getUsername(), workConf.getPassword());
     }
+  }
+
+  /**
+   * Make a connection and automatically create the database if it doesn't exist.
+   * This is specifically useful for PostgreSQL where the database must exist before connecting.
+   */
+  public final Connection makeConnectionWithDatabaseCreation() throws SQLException {
+    try {
+      // First try to connect normally
+      return makeConnection();
+    } catch (SQLException e) {
+      // If connection fails and it's PostgreSQL, try to create the database
+      if (workConf.getDatabaseType() == DatabaseType.POSTGRES && 
+          e.getMessage().contains("does not exist")) {
+        LOG.info("Database does not exist, attempting to create it...");
+        createDatabaseIfNotExists();
+        // Now try to connect again
+        return makeConnection();
+      }
+      throw e;
+    }
+  }
+
+  /**
+   * Create the database if it doesn't exist (PostgreSQL specific)
+   */
+  private void createDatabaseIfNotExists() throws SQLException {
+    String url = workConf.getUrl();
+    String username = workConf.getUsername();
+    String password = workConf.getPassword();
+    
+    // Extract database name from URL
+    // URL format: jdbc:postgresql://localhost:5432/benchbase?...
+    String dbName = extractDatabaseNameFromUrl(url);
+    if (dbName == null) {
+      throw new SQLException("Could not extract database name from URL: " + url);
+    }
+    
+    // Create connection URL to default 'postgres' database
+    String defaultUrl = url.replaceFirst("/" + dbName + "\\?", "/postgres?");
+    if (!defaultUrl.contains("?")) {
+      defaultUrl = url.replaceFirst("/" + dbName, "/postgres");
+    }
+    
+    LOG.info("Connecting to default database to create database '{}'", dbName);
+    
+    Connection conn = null;
+    try {
+      if (StringUtils.isEmpty(username)) {
+        conn = DriverManager.getConnection(defaultUrl);
+      } else {
+        conn = DriverManager.getConnection(defaultUrl, username, password);
+      }
+      
+      // Check if database exists
+      String checkSql = "SELECT 1 FROM pg_database WHERE datname = ?";
+      try (PreparedStatement stmt = conn.prepareStatement(checkSql)) {
+        stmt.setString(1, dbName);
+        try (ResultSet rs = stmt.executeQuery()) {
+          if (!rs.next()) {
+            // Database doesn't exist, create it
+            LOG.info("Creating database '{}'", dbName);
+            String createSql = "CREATE DATABASE \"" + dbName + "\"";
+            try (Statement createStmt = conn.createStatement()) {
+              createStmt.executeUpdate(createSql);
+              LOG.info("Successfully created database '{}'", dbName);
+            }
+          } else {
+            LOG.info("Database '{}' already exists", dbName);
+          }
+        }
+      }
+    } finally {
+      if (conn != null) {
+        conn.close();
+      }
+    }
+  }
+
+  /**
+   * Extract database name from PostgreSQL JDBC URL
+   */
+  private String extractDatabaseNameFromUrl(String url) {
+    // Pattern: jdbc:postgresql://host:port/database?params
+    String pattern = "jdbc:postgresql://[^/]+/([^?]+)";
+    java.util.regex.Pattern p = java.util.regex.Pattern.compile(pattern);
+    java.util.regex.Matcher m = p.matcher(url);
+    if (m.find()) {
+      return m.group(1);
+    }
+    return null;
   }
 
   private String afterLoadScriptPath = null;
@@ -216,7 +310,7 @@ public abstract class BenchmarkModule {
         LOG.error(throwables.getMessage(), throwables);
       }
     }
-    try (Connection conn = this.makeConnection()) {
+    try (Connection conn = this.makeConnectionWithDatabaseCreation()) {
       this.catalog =
           SQLUtil.getCatalog(this, this.getWorkloadConfiguration().getDatabaseType(), conn);
     }
@@ -227,7 +321,7 @@ public abstract class BenchmarkModule {
    * (e.g., table, indexes, etc) needed for this benchmark
    */
   public final void createDatabase() throws SQLException, IOException {
-    try (Connection conn = this.makeConnection()) {
+    try (Connection conn = this.makeConnectionWithDatabaseCreation()) {
       this.createDatabase(this.workConf.getDatabaseType(), conn);
     }
   }
