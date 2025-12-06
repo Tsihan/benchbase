@@ -10,6 +10,7 @@
     <reconnectOnConnectionFailure>true</reconnectOnConnectionFailure>
     <isolation>TRANSACTION_SERIALIZABLE</isolation>
     <batchsize>128</batchsize>
+    <randomSeed>42</randomSeed>
     <analyze>false</analyze>
     <analyzeOutput>results/tpcc-explain-analyze.json</analyzeOutput>
 
