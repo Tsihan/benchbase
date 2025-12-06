@@ -93,8 +93,8 @@ public abstract class BenchmarkModule {
   }
 
   /**
-   * Make a connection and automatically create the database if it doesn't exist.
-   * This is specifically useful for PostgreSQL where the database must exist before connecting.
+   * Make a connection and automatically create the database if it doesn't exist. This is
+   * specifically useful for PostgreSQL where the database must exist before connecting.
    */
   public final Connection makeConnectionWithDatabaseCreation() throws SQLException {
     try {
@@ -102,8 +102,8 @@ public abstract class BenchmarkModule {
       return makeConnection();
     } catch (SQLException e) {
       // If connection fails and it's PostgreSQL, try to create the database
-      if (workConf.getDatabaseType() == DatabaseType.POSTGRES && 
-          e.getMessage().contains("does not exist")) {
+      if (workConf.getDatabaseType() == DatabaseType.POSTGRES
+          && e.getMessage().contains("does not exist")) {
         LOG.info("Database does not exist, attempting to create it...");
         createDatabaseIfNotExists();
         // Now try to connect again
@@ -113,29 +113,27 @@ public abstract class BenchmarkModule {
     }
   }
 
-  /**
-   * Create the database if it doesn't exist (PostgreSQL specific)
-   */
+  /** Create the database if it doesn't exist (PostgreSQL specific) */
   private void createDatabaseIfNotExists() throws SQLException {
     String url = workConf.getUrl();
     String username = workConf.getUsername();
     String password = workConf.getPassword();
-    
+
     // Extract database name from URL
     // URL format: jdbc:postgresql://localhost:5432/benchbase?...
     String dbName = extractDatabaseNameFromUrl(url);
     if (dbName == null) {
       throw new SQLException("Could not extract database name from URL: " + url);
     }
-    
+
     // Create connection URL to default 'postgres' database
     String defaultUrl = url.replaceFirst("/" + dbName + "\\?", "/postgres?");
     if (!defaultUrl.contains("?")) {
       defaultUrl = url.replaceFirst("/" + dbName, "/postgres");
     }
-    
+
     LOG.info("Connecting to default database to create database '{}'", dbName);
-    
+
     Connection conn = null;
     try {
       if (StringUtils.isEmpty(username)) {
@@ -143,7 +141,7 @@ public abstract class BenchmarkModule {
       } else {
         conn = DriverManager.getConnection(defaultUrl, username, password);
       }
-      
+
       // Check if database exists
       String checkSql = "SELECT 1 FROM pg_database WHERE datname = ?";
       try (PreparedStatement stmt = conn.prepareStatement(checkSql)) {
@@ -169,9 +167,7 @@ public abstract class BenchmarkModule {
     }
   }
 
-  /**
-   * Extract database name from PostgreSQL JDBC URL
-   */
+  /** Extract database name from PostgreSQL JDBC URL */
   private String extractDatabaseNameFromUrl(String url) {
     // Pattern: jdbc:postgresql://host:port/database?params
     String pattern = "jdbc:postgresql://[^/]+/([^?]+)";

@@ -21,6 +21,8 @@ import static com.oltpbenchmark.types.State.MEASURE;
 
 import com.oltpbenchmark.*;
 import com.oltpbenchmark.api.Procedure.UserAbortException;
+import com.oltpbenchmark.api.explain.ExplainAnalyzeHelper;
+import com.oltpbenchmark.api.explain.ExplainAnalyzeRecorder;
 import com.oltpbenchmark.types.DatabaseType;
 import com.oltpbenchmark.types.State;
 import com.oltpbenchmark.types.TransactionStatus;
@@ -403,6 +405,8 @@ public abstract class Worker<T extends BenchmarkModule> implements Runnable {
     try {
       int retryCount = 0;
       int maxRetryCount = configuration.getMaxRetries();
+      boolean analyzeMode = configuration.isAnalyzeEnabled();
+      ExplainAnalyzeRecorder explainRecorder = configuration.getExplainAnalyzeRecorder();
 
       while (retryCount < maxRetryCount && this.workloadState.getGlobalState() != State.DONE) {
 
@@ -441,7 +445,17 @@ public abstract class Worker<T extends BenchmarkModule> implements Runnable {
             LOG.debug(String.format("%s %s attempting...", this, transactionType));
           }
 
-          status = this.executeWork(conn, transactionType);
+          if (analyzeMode) {
+            ExplainAnalyzeHelper.setContext(explainRecorder, this.id, transactionType.getName());
+          }
+
+          try {
+            status = this.executeWork(conn, transactionType);
+          } finally {
+            if (analyzeMode) {
+              ExplainAnalyzeHelper.clear();
+            }
+          }
 
           if (LOG.isDebugEnabled()) {
             LOG.debug(

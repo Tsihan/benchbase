@@ -16,6 +16,7 @@
 package com.oltpbenchmark;
 
 import com.oltpbenchmark.api.TransactionTypes;
+import com.oltpbenchmark.api.explain.ExplainAnalyzeRecorder;
 import com.oltpbenchmark.types.DatabaseType;
 import com.oltpbenchmark.util.FileUtil;
 import com.oltpbenchmark.util.ThreadUtil;
@@ -49,6 +50,9 @@ public class WorkloadConfiguration {
   private String dataDir = null;
   private String ddlPath = null;
   private boolean advancedMonitoringEnabled = false;
+  private boolean analyzeEnabled = false;
+  private String analyzeOutputFile = null;
+  private ExplainAnalyzeRecorder explainAnalyzeRecorder = null;
 
   /**
    * If true, establish a new connection for each transaction, otherwise use one persistent
@@ -69,6 +73,36 @@ public class WorkloadConfiguration {
 
   public void setBenchmarkName(String benchmarkName) {
     this.benchmarkName = benchmarkName;
+  }
+
+  public boolean isAnalyzeEnabled() {
+    return analyzeEnabled;
+  }
+
+  public void setAnalyzeEnabled(boolean analyzeEnabled) {
+    this.analyzeEnabled = analyzeEnabled;
+    if (analyzeEnabled && this.explainAnalyzeRecorder == null) {
+      this.explainAnalyzeRecorder = new ExplainAnalyzeRecorder();
+    }
+  }
+
+  public String getAnalyzeOutputFile() {
+    if (this.analyzeOutputFile == null || this.analyzeOutputFile.isEmpty()) {
+      String name = this.benchmarkName != null ? this.benchmarkName : "benchbase";
+      return "results/" + name + "-explain-analyze.json";
+    }
+    return this.analyzeOutputFile;
+  }
+
+  public void setAnalyzeOutputFile(String analyzeOutputFile) {
+    this.analyzeOutputFile = analyzeOutputFile;
+  }
+
+  public ExplainAnalyzeRecorder getExplainAnalyzeRecorder() {
+    if (this.analyzeEnabled && this.explainAnalyzeRecorder == null) {
+      this.explainAnalyzeRecorder = new ExplainAnalyzeRecorder();
+    }
+    return this.explainAnalyzeRecorder;
   }
 
   public WorkloadState getWorkloadState() {

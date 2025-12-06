@@ -21,6 +21,7 @@ import com.oltpbenchmark.api.BenchmarkModule;
 import com.oltpbenchmark.api.TransactionType;
 import com.oltpbenchmark.api.TransactionTypes;
 import com.oltpbenchmark.api.Worker;
+import com.oltpbenchmark.api.explain.ExplainAnalyzeRecorder;
 import com.oltpbenchmark.types.DatabaseType;
 import com.oltpbenchmark.types.State;
 import com.oltpbenchmark.util.*;
@@ -143,6 +144,17 @@ public class DBWorkload {
       wrkld.setNewConnectionPerTxn(xmlConfig.getBoolean("newConnectionPerTxn", false));
       wrkld.setReconnectOnConnectionFailure(
           xmlConfig.getBoolean("reconnectOnConnectionFailure", false));
+      boolean analyzeEnabled =
+          xmlConfig.getBoolean(
+              "analyze" + pluginTest, xmlConfig.getBoolean("analyze[not(@bench)]", false));
+      wrkld.setAnalyzeEnabled(analyzeEnabled);
+      String analyzeOutput =
+          xmlConfig.getString(
+              "analyzeOutput" + pluginTest,
+              xmlConfig.getString("analyzeOutput[not(@bench)]", null));
+      if (analyzeOutput != null) {
+        wrkld.setAnalyzeOutputFile(analyzeOutput);
+      }
 
       int terminals = xmlConfig.getInt("terminals[not(@bench)]", 0);
       terminals = xmlConfig.getInt("terminals" + pluginTest, terminals);
@@ -204,6 +216,10 @@ public class DBWorkload {
       initDebug.put("Terminals", wrkld.getTerminals());
       initDebug.put("New Connection Per Txn", wrkld.getNewConnectionPerTxn());
       initDebug.put("Reconnect on Connection Failure", wrkld.getReconnectOnConnectionFailure());
+      initDebug.put("Analyze Mode", wrkld.isAnalyzeEnabled());
+      if (wrkld.isAnalyzeEnabled()) {
+        initDebug.put("Analyze Output", wrkld.getAnalyzeOutputFile());
+      }
 
       if (selectivity != -1) {
         initDebug.put("Selectivity", selectivity);
@@ -562,14 +578,20 @@ public class DBWorkload {
       // Bombs away!
       try {
         Results r = runWorkload(benchList, monitorInfo);
-        writeOutputs(r, activeTXTypes, argsLine, xmlConfig);
-        writeHistograms(r);
+        boolean analyzeMode =
+            benchList.stream().anyMatch(b -> b.getWorkloadConfiguration().isAnalyzeEnabled());
+        if (analyzeMode) {
+          writeExplainAnalyzeOutputs(benchList);
+        } else {
+          writeOutputs(r, activeTXTypes, argsLine, xmlConfig);
+          writeHistograms(r);
 
-        if (argsLine.hasOption("json-histograms")) {
-          String histogram_json = writeJSONHistograms(r);
-          String fileName = argsLine.getOptionValue("json-histograms");
-          FileUtil.writeStringToFile(new File(fileName), histogram_json);
-          LOG.info("Histograms JSON Data: " + fileName);
+          if (argsLine.hasOption("json-histograms")) {
+            String histogram_json = writeJSONHistograms(r);
+            String fileName = argsLine.getOptionValue("json-histograms");
+            FileUtil.writeStringToFile(new File(fileName), histogram_json);
+            LOG.info("Histograms JSON Data: " + fileName);
+          }
         }
 
         if (r.getState() == State.ERROR) {
@@ -764,6 +786,22 @@ public class DBWorkload {
       try (PrintStream ps = new PrintStream(FileUtil.joinPath(outputDirectory, fileName))) {
         rw.writeResults(windowSize, ps, t);
       }
+    }
+  }
+
+  private static void writeExplainAnalyzeOutputs(List<BenchmarkModule> benchList)
+      throws IOException {
+    for (BenchmarkModule bench : benchList) {
+      WorkloadConfiguration cfg = bench.getWorkloadConfiguration();
+      if (!cfg.isAnalyzeEnabled()) {
+        continue;
+      }
+      ExplainAnalyzeRecorder recorder = cfg.getExplainAnalyzeRecorder();
+      if (recorder == null) {
+        LOG.warn("Analyze mode enabled but recorder is missing for {}", bench.getBenchmarkName());
+        continue;
+      }
+      recorder.writeTo(cfg.getAnalyzeOutputFile());
     }
   }
 

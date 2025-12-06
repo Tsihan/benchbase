@@ -17,6 +17,7 @@
 
 package com.oltpbenchmark.api;
 
+import com.oltpbenchmark.api.explain.ExplainAnalyzeProxy;
 import com.oltpbenchmark.jdbc.AutoIncrementPreparedStatement;
 import com.oltpbenchmark.types.DatabaseType;
 import com.oltpbenchmark.util.MonitoringUtil;
@@ -92,7 +93,7 @@ public abstract class Procedure {
     for (int i = 0; i < params.length; i++) {
       pStmt.setObject(i + 1, params[i]);
     }
-    return (pStmt);
+    return ExplainAnalyzeProxy.wrap(conn, stmt, pStmt);
   }
 
   /**
